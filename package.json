@@ -1,0 +1,11 @@
+{
+  "name": "touchosc-script-injector",
+  "version": "1.0.0",
+  "description": "Injects external LUA files into TouchOSC control script fields",
+  "main": "watch.js",
+  "author": "Jacob Clarke",
+  "license": "MIT",
+  "scripts": {
+    "start": "deno run watch.ts --allow-read --allow-write"
+  }
+}
