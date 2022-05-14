@@ -44,3 +44,11 @@ deno run --allow-read --allow-write src/index.ts
 ```
 There is a `--debug` argument that adds extra logs and outputs a debug `.json` file, and you can also pass a `.tosc` file path (relative or absolute) as an argument to skip the prompting step.
 
+
+---
+
+## TODO
+
+- Make watcher also observe the `.tosc` project file and update accordingly
+- Check that groups can be targeted for script injection
+- Look at alternative XML parsing deno modules because the one I picked ended up being pretty slow...
