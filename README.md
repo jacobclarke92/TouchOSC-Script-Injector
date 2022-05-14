@@ -3,7 +3,7 @@
 A neat little CLI tool that allows you to write TouchOSC LUA scripts externally by injecting them into the TouchOSC project file directly, with some bonus smarts.  
 
 Here's a quick demo:  
-[![Demo on youtube](https://img.youtube.com/vi/IrUO52OCpA/0.jpg)](https://www.youtube.com/watch?v=IrUO52OCpA)
+[![Demo on youtube](https://img.youtube.com/vi/-IrUO52OCpA/0.jpg)](https://www.youtube.com/watch?v=-IrUO52OCpA)
 
 
 ## Project setup
