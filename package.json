@@ -2,10 +2,17 @@
   "name": "touchosc-script-injector",
   "version": "1.0.0",
   "description": "Injects external LUA files into TouchOSC control script fields",
-  "main": "watch.js",
+  "main": "src/index.js",
   "author": "Jacob Clarke",
   "license": "MIT",
   "scripts": {
-    "start": "deno run watch.ts --allow-read --allow-write"
+    "start": "deno run --allow-read --allow-write src/index.ts",
+    "dev": "deno run --allow-read --allow-write src/index.ts --debug",
+    "compile": "deno compile --allow-read --allow-write --output TouchOSC_ScriptInjector src/index.ts",
+    "compile-linux": "deno compile --allow-read --allow-write --target x86_64-unknown-linux-gnu --output TouchOSC_ScriptInjector_linux src/index.ts",
+    "compile-windows": "deno compile --allow-read --allow-write --target x86_64-pc-windows-msvc --output TouchOSC_ScriptInjector_windows src/index.ts",
+    "compile-mac": "deno compile --allow-read --allow-write --target x86_64-apple-darwin --output TouchOSC_ScriptInjector_mac src/index.ts",
+    "compile-macM1": "deno compile --allow-read --allow-write --target aarch64-apple-darwin --output TouchOSC_ScriptInjector_macM1 src/index.ts",
+    "compile-all": "npm run compile-linux && npm run compile-windows && npm run compile-mac && npm run compile-macM1"
   }
 }

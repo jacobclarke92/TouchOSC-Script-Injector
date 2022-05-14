@@ -1,0 +1,2 @@
+NAME_COLOR = '00ff00'
+TAG_COLOR = '0000ff'

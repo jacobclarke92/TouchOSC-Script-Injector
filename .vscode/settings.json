@@ -2,4 +2,5 @@
     "deno.enable": true,
     "xml.server.vmargs": "-Xmx512M",
     "xml.symbols.maxItemsComputed": 50000,
+    "xml.format.joinContentLine": true
 }
