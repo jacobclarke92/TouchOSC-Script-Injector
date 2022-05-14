@@ -20,7 +20,7 @@ const askForFilePath = async () =>
 const ensureFilePath = async () => {
   let answer = await askForFilePath()
   while (!answer) answer = await askForFilePath()
-  const isAbsolutePath = answer.match(/^\//)
+  const isAbsolutePath = answer.match(/^(\/)|(\w{1}\:)/)
   if (!isAbsolutePath) answer = runtimeDir + answer
   return answer
 }
