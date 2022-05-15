@@ -2,7 +2,7 @@
 
 A neat little CLI tool that allows you to write TouchOSC LUA scripts externally by injecting them into the TouchOSC project file directly, with some bonus smarts.  
 
-Here's a quick demo:  
+Here's a quick demo (v1.0.0):  
 [![Demo on youtube](https://img.youtube.com/vi/-IrUO52OCpA/0.jpg)](https://www.youtube.com/watch?v=-IrUO52OCpA)
 
 
@@ -14,21 +14,24 @@ In the same folder as your `.tosc` project file make a folder called `scripts`, 
 
 `_root.lua` will get applied to your document's root script.
 
-All other `.lua` files will map directly to any controls of the same name. By pre-pending a file name with `tag_` the mapping will be done by tag instead of name.
+All other `.lua` files will map directly to any controls or groups of the same name. By pre-pending a file name with `tag_` the mapping will be done by tag instead of name.
 
-This name/tag script copying process will find controls nested in however many groups.
+This name/tag script copying process should find controls nested in however many groups.
 
 ## Using this thing
 
 Head to [releases](https://github.com/jacobclarke92/TouchOSC-Script-Injector/releases) and download the version best suited for your OS.  
-Windows, Mac and Linux options available but I've only tested Mac so far.  
+Windows, Mac and Linux options available.  
+I've personally only tested on Mac so far but have heard window works fine.  
 
 Simply run the program and follow the prompts!  
-You will be prompted for your project file, drag your `.tosc` file into the window and press enter and you'll be away.
 
-The program will run in its entirety after initially receiving a project file. It will creating a new `_INJECTED.tosc` file next to your original.
+The program will run in its entirety after initially receiving a project file. It will create a new `_INJECTED.tosc` file next to your original.
 
-After this point the program will monitor your `scripts` folder and watch for any changes to `.lua` files, patching your project file as necessary.
+After this point the program will monitor your `scripts` folder and watch for any changes to `.lua` files, patching your project file as necessary. If a change is made to the original `.tosc` fil the injection process with run afresh.
+
+
+Note: whenever the program runs you'll need to close and reopen your `_INJECTED.tosc` project if you already have it open to see changes as TouchOSC understandably doesn't refresh itself if changes are detected.
 
 ---
 
@@ -47,8 +50,6 @@ There is a `--debug` argument that adds extra logs and outputs a debug `.json` f
 
 ---
 
-## TODO
+## Issues
 
-- Make watcher also observe the `.tosc` project file and update accordingly
-- Check that groups can be targeted for script injection
-- Look at alternative XML parsing deno modules because the one I picked ended up being pretty slow...
+The XML parsing lib isn't very performant once files get above the 1mb mark. I've not been able to find and good alternatives for deno as of now.
