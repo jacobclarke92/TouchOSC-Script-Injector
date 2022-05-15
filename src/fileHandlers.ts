@@ -68,7 +68,9 @@ export async function writeProjectFile(parsedProject: ToscDoc, fileDir: string, 
   console.log('📝 Re-encoding to XML...')
   const progress = new ProgressBar({
     total: fileSize || lastEncodeTime,
-    display: `${fileSize ? '' : '≈ '}:percent [:bar] :time`,
+    display: fileSize
+      ? ':percent [:bar] :time / ?'
+      : `≈ :percent [:bar] :time / ${(lastEncodeTime / 1000).toFixed(1)}s`,
   })
   stopwatchTick()
   const initialTime = stopwatchLast()
