@@ -6,6 +6,7 @@ import { exists } from 'https://deno.land/std@0.139.0/fs/mod.ts'
 import { debounce } from 'https://deno.land/x/debounce@v0.0.7/mod.ts'
 
 const stopwatch = [Date.now()]
+export const stopwatchLast = () => stopwatch[stopwatch.length - 1]
 export const stopwatchTick = () => {
   stopwatch.push(Date.now())
   return stopwatch.length < 2 ? 0 : stopwatch[stopwatch.length - 1] - stopwatch[stopwatch.length - 2]
@@ -24,12 +25,13 @@ export async function processToscFile(filePath: string, scriptsDir: string, debu
 
   console.log(`Reading "${filePath}"...`)
   const projectContent = await getToscFileContent(filePath)
+  const fileSize = new Blob([projectContent]).size
 
-  const parsedProject = parseToscXML(projectContent)
+  const parsedProject = parseToscXML(projectContent, fileSize)
   if (debugMode) writeDebugFiles(fileDir, fileName, parsedProject)
 
   await applyAllScriptFiles(parsedProject, scriptsDir)
-  await writeProjectFile(parsedProject, fileDir, fileName)
+  await writeProjectFile(parsedProject, fileDir, fileName, fileSize * 1.2)
 
   return parsedProject
 }

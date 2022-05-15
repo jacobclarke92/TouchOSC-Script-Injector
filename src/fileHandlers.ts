@@ -1,6 +1,7 @@
 import { ToscDoc, ToscNode, ToscGroupNode, ToscProperty } from './types.ts'
-import { stopwatchTick } from './main.ts'
+import { stopwatchTick, stopwatchLast } from './main.ts'
 import { parse as parseXml, stringify as encodeXml } from 'https://deno.land/x/xml@2.0.4/mod.ts'
+import ProgressBar from 'https://deno.land/x/progress@v1.2.5/mod.ts'
 import { XmlEntities } from 'https://deno.land/x/html_entities@v1.0/mod.js'
 import { inflate } from 'https://deno.land/x/compress@v0.4.5/zlib/inflate.ts'
 
@@ -28,10 +29,14 @@ export async function decodeToscFile(filePath: string) {
   }
 }
 
-export function parseToscXML(xmlString: string): ToscDoc {
+export function parseToscXML(xmlString: string, fileSize?: number): ToscDoc {
+  console.log('⏱ Parsing XML...')
   stopwatchTick()
+  const total = fileSize || new Blob([xmlString]).size
+  const progress = new ProgressBar({ total, display: ':percent [:bar] :time' })
   try {
-    const json = parseXml(xmlString) as unknown as ToscDoc
+    const json = parseXml(xmlString, { progress: (bytes) => progress.render(bytes) }) as unknown as ToscDoc
+    progress.render(total)
     console.log(`✅ XML successfully parsed (took ${stopwatchTick()} ms)`)
     return json
   } catch (e) {
@@ -58,10 +63,25 @@ const cDataRestorer: StringifierOptions['replacer'] = ({ key, value, tag }) =>
     ? `<![CDATA[${XmlEntities.decode(value)}]]>`
     : value
 
-export async function writeProjectFile(parsedProject: ToscDoc, fileDir: string, fileName: string) {
-  console.log('📝 Re-encoding to XML and saving file...')
+export let lastEncodeTime = 0
+export async function writeProjectFile(parsedProject: ToscDoc, fileDir: string, fileName: string, fileSize?: number) {
+  console.log('📝 Re-encoding to XML...')
+  const progress = new ProgressBar({
+    total: fileSize || lastEncodeTime,
+    display: `${fileSize ? '' : '≈ '}:percent [:bar] :time`,
+  })
   stopwatchTick()
-  const xmlString = encodeXml(parsedProject as any, { indentSize: 0, replacer: cDataRestorer })
+  const initialTime = stopwatchLast()
+  const xmlString = encodeXml(parsedProject as any, {
+    indentSize: 0,
+    replacer: cDataRestorer,
+    progress: (bytes) => (fileSize || lastEncodeTime) && progress.render(fileSize ? bytes : Date.now() - initialTime),
+  })
+  progress.render(fileSize || lastEncodeTime)
+  progress.end()
+  if (fileSize) lastEncodeTime = Date.now() - initialTime
+  console.log(`✅ XML encoding done (took ${stopwatchTick()} ms)`)
+  console.log('⏱ Writing file...')
   const newFileName = fileDir + fileName + '_INJECTED.tosc'
   await Deno.writeTextFile(newFileName, xmlString)
   console.log(`✅ Project file written (took ${stopwatchTick()} ms)`)
