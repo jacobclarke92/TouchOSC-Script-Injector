@@ -1,5 +1,5 @@
 import { printBanner } from './banner.ts'
-import { processToscFile, startWatcher } from './main.ts'
+import { processToscFile, startScriptsWatcher, startToscFileWatcher, cancelWatchers } from './main.ts'
 import Ask from 'https://deno.land/x/ask@1.0.6/mod.ts'
 
 const debugMode = !!(Deno.args || []).find((arg) => arg === '--debug')
@@ -30,7 +30,15 @@ if (!debugMode) printBanner(true)
 let filePath: string = filePathArg ? filePathArg.replace(/^\.\//, '') : await ensureFilePath()
 let scriptsDir: string = filePath.replace(fileNameAndExtRegex, '') + 'scripts/'
 
-async function letsGo() {
+async function handleProjectFileChange() {
+  printBanner(true)
+  console.log(`⏱ TOSC file changed, re-caching...`)
+  await cancelWatchers()
+  await letsGo(filePath, scriptsDir)
+  throw 'pls stop'
+}
+
+async function letsGo(filePath: string, scriptsDir: string) {
   const parsedProject = await (async () => {
     try {
       return await processToscFile(filePath, scriptsDir, debugMode)
@@ -46,13 +54,16 @@ async function letsGo() {
     if (!debugMode) printBanner(true)
     filePath = await ensureFilePath()
     scriptsDir = filePath.replace(fileNameAndExtRegex, '') + 'scripts/'
-    await letsGo()
+    await letsGo(filePath, scriptsDir)
     return
   }
 
   console.log('\n🎉🎉🎉🎉🎉\n')
 
-  await startWatcher(parsedProject, filePath, scriptsDir)
+  await Promise.all([
+    startScriptsWatcher(parsedProject, filePath, scriptsDir),
+    startToscFileWatcher(filePath, handleProjectFileChange),
+  ])
 }
 
-letsGo()
+await letsGo(filePath, scriptsDir)

@@ -31,7 +31,7 @@ export async function processToscFile(filePath: string, scriptsDir: string, debu
   if (debugMode) writeDebugFiles(fileDir, fileName, parsedProject)
 
   await applyAllScriptFiles(parsedProject, scriptsDir)
-  await writeProjectFile(parsedProject, fileDir, fileName, fileSize * 1.2)
+  await writeProjectFile(parsedProject, fileDir, fileName, fileSize * 1.25)
 
   return parsedProject
 }
@@ -72,7 +72,7 @@ const injectScriptRecursive = <NodeType extends ToscNode | ToscGroupNode>(
   return newNode
 }
 
-const debounced_applyScriptFile: { [key: string]: Function } = {}
+let debounced_applyScriptFile: { [key: string]: Function } = {}
 async function applyScriptFile(parsedProject: ToscDoc, scriptFilePath: string, prependScript?: string) {
   let luaScript = await Deno.readTextFile(scriptFilePath)
   if (prependScript) luaScript = prependScript + '\n\n' + luaScript
@@ -119,7 +119,10 @@ async function applyAllScriptFiles(parsedProject: ToscDoc, scriptsDir: string) {
   printResults()
 }
 
-export async function startWatcher(
+let scriptsWatcher: Deno.FsWatcher | undefined
+let toscFileWatcher: Deno.FsWatcher | undefined
+
+export async function startScriptsWatcher(
   parsedProject: ToscDoc,
   filePath: string,
   scriptsDir: string,
@@ -129,13 +132,14 @@ export async function startWatcher(
   if (!fileName) throw '❌ Could not determine file name HALP'
   const fileDir = filePath.replace(fileNameAndExtRegex, '')
 
-  console.log('👀 File watcher started')
+  console.log('👀 Scripts watcher started')
 
   const globalsScriptExists = await exists(scriptsDir + '_globals.lua')
   const globals = globalsScriptExists ? await Deno.readTextFile(scriptsDir + '_globals.lua') : undefined
 
-  const watcher = Deno.watchFs(scriptsDir)
-  for await (const event of watcher) {
+  if (scriptsWatcher) throw 'Scripts watcher already exists'
+  scriptsWatcher = Deno.watchFs(scriptsDir)
+  for await (const event of scriptsWatcher) {
     if (event.kind !== 'modify') continue
     for (const checkPath of event.paths) {
       if (!checkPath.match(/\.lua$/)) {
@@ -163,4 +167,21 @@ export async function startWatcher(
       }
     }
   }
+}
+
+export async function startToscFileWatcher(filePath: string, callback: () => void) {
+  console.log('👀 TOSC file watcher started')
+  if (toscFileWatcher) throw 'Tosc file watcher already exists'
+  toscFileWatcher = Deno.watchFs(filePath)
+  for await (const event of toscFileWatcher) {
+    if (event.kind === 'modify') await callback()
+  }
+}
+
+export async function cancelWatchers() {
+  console.log('😆 Cancelling watchers...')
+  debounced_applyScriptFile = {}
+  await Promise.all([scriptsWatcher?.return?.(), toscFileWatcher?.return?.()])
+  scriptsWatcher = undefined
+  toscFileWatcher = undefined
 }
