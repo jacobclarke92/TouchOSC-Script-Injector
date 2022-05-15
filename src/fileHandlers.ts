@@ -1,9 +1,9 @@
-import { ToscDoc, ToscNode, ToscGroupNode, ToscProperty } from './types.ts'
+import { ToscDoc } from './types.ts'
 import { stopwatchTick, stopwatchLast } from './main.ts'
 import { parse as parseXml, stringify as encodeXml } from 'https://deno.land/x/xml@2.0.4/mod.ts'
-import ProgressBar from 'https://deno.land/x/progress@v1.2.5/mod.ts'
 import { XmlEntities } from 'https://deno.land/x/html_entities@v1.0/mod.js'
 import { inflate } from 'https://deno.land/x/compress@v0.4.5/zlib/inflate.ts'
+import ProgressBar from 'https://deno.land/x/progress@v1.2.5/mod.ts'
 
 export async function getToscFileContent(filePath: string) {
   const content = await Deno.readTextFile(filePath)
@@ -20,13 +20,28 @@ export async function getToscFileContent(filePath: string) {
 }
 
 export async function decodeToscFile(filePath: string) {
-  try {
-    const rawContent = await Deno.readFile(filePath)
-    const inflatedContent = inflate(rawContent)
-    return new TextDecoder('utf-8').decode(inflatedContent)
-  } catch (err) {
-    throw '❌ Failed to decode file'
-  }
+  const rawContent = await (async () => {
+    try {
+      return Deno.readFile(filePath)
+    } catch (error) {
+      throw '❌ Failed to read file'
+    }
+  })()
+  const inflatedContent = (() => {
+    try {
+      return inflate(rawContent)
+    } catch (error) {
+      throw '❌ Failed to inflate file'
+    }
+  })()
+  const decodedContent = (() => {
+    try {
+      return new TextDecoder('utf-8').decode(inflatedContent)
+    } catch (error) {
+      throw '❌ Failed to decode inflated content'
+    }
+  })()
+  return decodedContent
 }
 
 export function parseToscXML(xmlString: string, fileSize?: number): ToscDoc {
