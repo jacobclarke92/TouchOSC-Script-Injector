@@ -13,6 +13,7 @@
     "compile-windows": "deno compile --allow-read --allow-write --target x86_64-pc-windows-msvc --output TouchOSC_ScriptInjector_windows src/index.ts",
     "compile-mac": "deno compile --allow-read --allow-write --target x86_64-apple-darwin --output TouchOSC_ScriptInjector_mac src/index.ts",
     "compile-macM1": "deno compile --allow-read --allow-write --target aarch64-apple-darwin --output TouchOSC_ScriptInjector_macM1 src/index.ts",
-    "compile-all": "npm run compile-linux && npm run compile-windows && npm run compile-mac && npm run compile-macM1"
+    "compile-all": "npm run compile-linux && npm run compile-windows && npm run compile-mac && npm run compile-macM1",
+    "release": "npm run compile-all && zip -r TouchOSC_ScriptInjector_linux.zip TouchOSC_ScriptInjector_linux && zip -r TouchOSC_ScriptInjector_windows.zip TouchOSC_ScriptInjector_windows.exe && zip -r TouchOSC_ScriptInjector_mac.zip TouchOSC_ScriptInjector_macM1 && zip -r TouchOSC_ScriptInjector_macM1.zip TouchOSC_ScriptInjector_mac"
   }
 }
