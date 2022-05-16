@@ -44,7 +44,7 @@ export async function decodeToscFile(filePath: string) {
   return decodedContent
 }
 
-export function parseToscXML(xmlString: string, fileSize?: number): ToscDoc {
+export function parseToscXML({ xmlString, fileSize }: { xmlString: string; fileSize?: number }): ToscDoc {
   console.log('⏱ Parsing XML...')
   stopwatchTick()
   const total = fileSize || new Blob([xmlString]).size
@@ -59,14 +59,22 @@ export function parseToscXML(xmlString: string, fileSize?: number): ToscDoc {
   }
 }
 
-export async function writeDebugFiles(fileDir: string, fileName: string, parsedProject: ToscDoc) {
+export async function writeDebugFiles({
+  parsedProject,
+  projectFileDir,
+  projectFileName,
+}: {
+  projectFileDir: string
+  projectFileName: string
+  parsedProject: ToscDoc
+}) {
   stopwatchTick()
-  await Deno.writeTextFile(fileDir + fileName + '_DEBUG.json', JSON.stringify(parsedProject, null, 2))
+  await Deno.writeTextFile(projectFileDir + projectFileName + '_DEBUG.json', JSON.stringify(parsedProject, null, 2))
   console.log(`✅ Wrote to JSON file for debugging (took ${stopwatchTick()} ms)`)
 
   stopwatchTick()
   await Deno.writeTextFile(
-    fileDir + fileName + '_DEBUG.tosc',
+    projectFileDir + projectFileName + '_DEBUG.tosc',
     encodeXml(parsedProject as any, { replacer: cDataRestorer })
   )
   console.log(`✅ Wrote to XML file for debugging (took ${stopwatchTick()} ms)`)
@@ -79,7 +87,17 @@ const cDataRestorer: StringifierOptions['replacer'] = ({ key, value, tag }) =>
     : value
 
 export let lastEncodeTime = 0
-export async function writeProjectFile(parsedProject: ToscDoc, fileDir: string, fileName: string, fileSize?: number) {
+export async function writeProjectFile({
+  parsedProject,
+  projectFileDir,
+  projectFileName,
+  fileSize,
+}: {
+  parsedProject: ToscDoc
+  projectFileDir: string
+  projectFileName: string
+  fileSize?: number
+}) {
   console.log('📝 Re-encoding to XML...')
   const progress = new ProgressBar({
     total: fileSize || lastEncodeTime,
@@ -99,8 +117,51 @@ export async function writeProjectFile(parsedProject: ToscDoc, fileDir: string, 
   if (fileSize) lastEncodeTime = Date.now() - initialTime
   console.log(`✅ XML encoding done (took ${stopwatchTick()} ms)`)
   console.log('⏱ Writing file...')
-  const newFileName = fileDir + fileName + '_INJECTED.tosc'
+  const newFileName = projectFileDir + projectFileName + '_INJECTED.tosc'
   await Deno.writeTextFile(newFileName, xmlString)
   console.log(`✅ Project file written (took ${stopwatchTick()} ms)`)
   console.log(newFileName)
+}
+
+export async function findReplaceScriptQuick({
+  oldScript,
+  newScript,
+  projectFileDir,
+  projectFileName,
+}: {
+  oldScript: string
+  newScript: string
+  projectFileDir: string
+  projectFileName: string
+}) {
+  const projectFile = projectFileDir + projectFileName + '_INJECTED.tosc'
+  const content = await (async () => {
+    try {
+      return await Deno.readTextFile(projectFile)
+    } catch (e) {
+      return false
+    }
+  })()
+  if (!content) return false
+
+  // the xml formatting process removes indentation within the script
+  // so we need to do the same in order for the find-replace to work
+  const formattedOldScript = oldScript.replace(/^[^\n]\s+/gm, '').trim()
+
+  let search = ''
+  if (content.indexOf(oldScript) >= 0) search = oldScript
+  else if (content.indexOf(formattedOldScript) >= 0) search = formattedOldScript
+  else return false
+
+  let replacements = 0
+  const newContent = content.replaceAll(search, () => {
+    replacements++
+    return newScript
+  })
+  try {
+    await Deno.writeTextFile(projectFile, newContent)
+  } catch (error) {
+    return false
+  }
+  return replacements
 }

@@ -1,7 +1,13 @@
 import { ToscDoc, ToscNode, ToscGroupNode, ToscProperty } from './types.ts'
 import { fileNameRegex, fileNameAndExtRegex } from './index.ts'
 import { printBanner } from './banner.ts'
-import { getToscFileContent, parseToscXML, writeDebugFiles, writeProjectFile } from './fileHandlers.ts'
+import {
+  getToscFileContent,
+  parseToscXML,
+  writeDebugFiles,
+  writeProjectFile,
+  findReplaceScriptQuick,
+} from './fileHandlers.ts'
 import { exists } from 'https://deno.land/std@0.139.0/fs/mod.ts'
 import { debounce } from 'https://deno.land/x/debounce@v0.0.7/mod.ts'
 
@@ -13,25 +19,49 @@ export const stopwatchTick = () => {
 }
 
 let scriptInjectionLog: { [key: string]: number } = {}
+let lastInjectionLog: typeof scriptInjectionLog = {}
 const printResults = () => {
   console.log('📋 Results:')
-  Object.keys(scriptInjectionLog).forEach((key) => console.log(`• ${key} - ${scriptInjectionLog[key]} injected`))
+  Object.keys(scriptInjectionLog)
+    .sort()
+    .forEach((key) => {
+      const value = scriptInjectionLog[key]
+      console.log(`${value === 0 ? '!' : '•'} ${key} - ${value} injected`)
+    })
 }
 
-export async function processToscFile(filePath: string, scriptsDir: string, debugMode: boolean = false) {
-  const fileName = filePath.match(fileNameRegex)?.[1]
-  if (!fileName) throw '❌ Could not determine file name HALP'
-  const fileDir = filePath.replace(fileNameAndExtRegex, '')
+const getInjectionLogKey = (scriptFileName: string) => {
+  if (scriptFileName === '_root') return scriptFileName
+  const key = scriptFileName.match(/^tag_/) ? 'tag' : 'name'
+  const value = key === 'tag' ? scriptFileName.replace(/^tag_/, '') : scriptFileName
+  return `${key}: ${value}`
+}
 
-  console.log(`Reading "${filePath}"...`)
-  const projectContent = await getToscFileContent(filePath)
+/**
+ * Reads TOSC file, process scripts, writes new TOSC file returns the document tree for reference
+ */
+export async function processToscFile({
+  projectFilePath,
+  scriptsDir,
+  debugMode = false,
+}: {
+  projectFilePath: string
+  scriptsDir: string
+  debugMode?: boolean
+}) {
+  const projectFileName = projectFilePath.match(fileNameRegex)?.[1]
+  if (!projectFileName) throw '❌ Could not determine file name HALP'
+  const projectFileDir = projectFilePath.replace(fileNameAndExtRegex, '')
+
+  console.log(`Reading "${projectFilePath}"...`)
+  const projectContent = await getToscFileContent(projectFilePath)
   const fileSize = new Blob([projectContent]).size
 
-  const parsedProject = parseToscXML(projectContent, fileSize)
-  if (debugMode) writeDebugFiles(fileDir, fileName, parsedProject)
+  const parsedProject = parseToscXML({ xmlString: projectContent, fileSize })
+  if (debugMode) writeDebugFiles({ parsedProject, projectFileDir, projectFileName })
 
-  await applyAllScriptFiles(parsedProject, scriptsDir)
-  await writeProjectFile(parsedProject, fileDir, fileName, fileSize * 1.25)
+  await applyAllScriptFiles({ parsedProject, scriptsDir, projectFileDir, projectFileName, debugMode })
+  await writeProjectFile({ parsedProject, projectFileDir, projectFileName, fileSize: fileSize * 1.25 })
 
   return parsedProject
 }
@@ -39,17 +69,24 @@ export async function processToscFile(filePath: string, scriptsDir: string, debu
 const propertyMatch = (node: ToscNode | ToscGroupNode, key: string, value: string): boolean =>
   !!node.properties.property.find((property) => property.key === key && property.value === value)
 
-const injectScriptRecursive = <NodeType extends ToscNode | ToscGroupNode>(
-  node: NodeType,
-  script: string,
-  propertyKey: string,
+const injectScriptRecursive = <NodeType extends ToscNode | ToscGroupNode>({
+  node,
+  script,
+  propertyKey,
+  propertyValue,
+}: {
+  node: NodeType
+  script: string
+  propertyKey: string
   propertyValue: string
-): NodeType => {
+}): NodeType => {
   let newNode: typeof node = { ...node }
 
   if ('children' in newNode && newNode.children.node.length > 0) {
     newNode.children = {
-      node: newNode.children.node.map((child) => injectScriptRecursive(child, script, propertyKey, propertyValue)),
+      node: newNode.children.node.map((child) =>
+        injectScriptRecursive({ node: child, script, propertyKey, propertyValue })
+      ),
     }
   }
 
@@ -65,7 +102,8 @@ const injectScriptRecursive = <NodeType extends ToscNode | ToscGroupNode>(
         ? newNode.properties.property.map((property) => (property.key === 'script' ? newProperty : property))
         : [...newNode.properties.property, newProperty],
     }
-    const logKey = `${propertyKey}: ${propertyValue}`
+
+    const logKey = getInjectionLogKey(propertyKey === 'tag' ? `tag_${propertyValue}` : propertyValue)
     scriptInjectionLog[logKey] = (scriptInjectionLog[logKey] || 0) + 1
   }
 
@@ -73,15 +111,61 @@ const injectScriptRecursive = <NodeType extends ToscNode | ToscGroupNode>(
 }
 
 let debounced_applyScriptFile: { [key: string]: Function } = {}
-async function applyScriptFile(parsedProject: ToscDoc, scriptFilePath: string, prependScript?: string) {
-  let luaScript = await Deno.readTextFile(scriptFilePath)
-  if (prependScript) luaScript = prependScript + '\n\n' + luaScript
+let scriptCache: { [key: string]: string } = {}
+async function applyScriptFile({
+  parsedProject,
+  scriptFilePath,
+  prependScript,
+  projectFileDir,
+  projectFileName,
+  debugMode = false,
+}: {
+  parsedProject: ToscDoc
+  scriptFilePath: string
+  prependScript?: string
+  projectFileDir: string
+  projectFileName: string
+  debugMode?: boolean
+}) {
+  const scriptDeleted = !(await exists(scriptFilePath))
+  let luaScript = ''
+  if (scriptDeleted) {
+    console.log('🗑 File deleted')
+  } else {
+    luaScript = await Deno.readTextFile(scriptFilePath)
+    if (prependScript) luaScript = prependScript + '\n\n' + luaScript
+  }
 
   // extract file name from path
-  let fileName = scriptFilePath.match(fileNameRegex)?.[1]
-  if (!fileName) return
+  const scriptFileName = scriptFilePath.match(fileNameRegex)?.[1]
+  if (!scriptFileName) return
 
-  if (fileName === '_root') {
+  if (Object.keys(scriptCache).includes(scriptFileName) && !!scriptCache[scriptFileName]) {
+    if (lastInjectionLog[getInjectionLogKey(scriptFileName)] === 0) {
+      console.log(`💨 ${scriptFileName} was previously not matched to any node, skipping update`)
+      return false
+    }
+
+    if (debugMode) console.log('🧠 Found old script in cache, attempting a quick replace...')
+    const oldScript = scriptCache[scriptFileName]
+
+    const quickReplaceResults = await findReplaceScriptQuick({
+      oldScript,
+      newScript: luaScript,
+      projectFileDir,
+      projectFileName,
+    })
+
+    if (quickReplaceResults === false) {
+      console.log('❓ Quick replace failed, proceeding to full rebuild...')
+    } else if (quickReplaceResults >= 1) {
+      console.log(`✅ Quick replace updated ${quickReplaceResults} instances`)
+      if (!scriptDeleted) scriptCache[scriptFileName] = luaScript
+      return false
+    }
+  }
+
+  if (scriptFileName === '_root') {
     const newProperty: ToscProperty = {
       '@type': 's',
       key: 'script',
@@ -92,45 +176,92 @@ async function applyScriptFile(parsedProject: ToscDoc, scriptFilePath: string, p
     parsedProject.lexml.node.properties.property = rootScriptPropertyExists
       ? rootProperties.map((property) => (property.key === 'script' ? newProperty : property))
       : [...rootProperties, newProperty]
-  } else {
-    const key = fileName.match(/^tag_/) ? 'tag' : 'name'
-    if (key === 'tag') fileName = fileName.replace(/^tag_/, '')
 
-    const modifiedRootNode = injectScriptRecursive(parsedProject.lexml.node, luaScript, key, fileName)
+    scriptInjectionLog['_root'] = 1
+  } else {
+    const propertyKey = scriptFileName.match(/^tag_/) ? 'tag' : 'name'
+    const propertyValue = propertyKey === 'tag' ? scriptFileName.replace(/^tag_/, '') : scriptFileName
+
+    scriptInjectionLog[getInjectionLogKey(scriptFileName)] = 0
+
+    const modifiedRootNode = injectScriptRecursive({
+      node: parsedProject.lexml.node,
+      script: luaScript,
+      propertyKey,
+      propertyValue,
+    })
     parsedProject.lexml.node = modifiedRootNode
   }
+
+  if (!scriptDeleted) scriptCache[scriptFileName] = luaScript
+  return true
 }
 
-async function applyAllScriptFiles(parsedProject: ToscDoc, scriptsDir: string) {
+async function applyAllScriptFiles({
+  parsedProject,
+  scriptsDir,
+  projectFileDir,
+  projectFileName,
+  debugMode = false,
+}: {
+  parsedProject: ToscDoc
+  scriptsDir: string
+  projectFileDir: string
+  projectFileName: string
+  debugMode?: boolean
+}) {
+  let requiresRebuild = false
+  lastInjectionLog = { ...scriptInjectionLog }
   scriptInjectionLog = {}
   console.log('🔎 Scanning for files to inject...')
+  let foundFiles = 0
   const globalsScriptExists = await exists(scriptsDir + '_globals.lua')
   const globals = globalsScriptExists ? await Deno.readTextFile(scriptsDir + '_globals.lua') : undefined
-  if (globals) console.log(`✓ Globals script found`)
+  if (globals) {
+    foundFiles++
+    if (debugMode) console.log(`✓ Globals script found`)
+  }
   for await (const dirEntry of Deno.readDir(scriptsDir)) {
     if (!dirEntry.isFile) continue
     if (!dirEntry.name.match(/\.lua$/)) continue
     if (dirEntry.name.match(/^_globals/)) continue
+    foundFiles++
     stopwatchTick()
-    await applyScriptFile(parsedProject, scriptsDir + dirEntry.name, globals)
-    console.log(`✓ Script file "${dirEntry.name}" applied (took ${stopwatchTick()} ms)`)
+    const scriptRequiresRebuild = await applyScriptFile({
+      parsedProject,
+      scriptFilePath: scriptsDir + dirEntry.name,
+      prependScript: globals,
+      projectFileDir,
+      projectFileName,
+      debugMode,
+    })
+    if (debugMode) console.log(`✓ Script file "${dirEntry.name}" applied (took ${stopwatchTick()} ms)`)
+    if (scriptRequiresRebuild) requiresRebuild = true
   }
-  console.log('✅ Patching done!')
-  printResults()
+  console.log(`✅ ${foundFiles} scripts found and patched!`)
+  if (requiresRebuild) printResults()
+
+  lastInjectionLog = { ...scriptInjectionLog }
+  return requiresRebuild
 }
 
 let scriptsWatcher: Deno.FsWatcher | undefined
 let toscFileWatcher: Deno.FsWatcher | undefined
 
-export async function startScriptsWatcher(
-  parsedProject: ToscDoc,
-  filePath: string,
-  scriptsDir: string,
-  debugMode: boolean = false
-) {
-  const fileName = filePath.match(fileNameRegex)?.[1]
-  if (!fileName) throw '❌ Could not determine file name HALP'
-  const fileDir = filePath.replace(fileNameAndExtRegex, '')
+export async function startScriptsWatcher({
+  parsedProject,
+  projectFilePath,
+  scriptsDir,
+  debugMode = false,
+}: {
+  parsedProject: ToscDoc
+  projectFilePath: string
+  scriptsDir: string
+  debugMode?: boolean
+}) {
+  const projectFileName = projectFilePath.match(fileNameRegex)?.[1]
+  if (!projectFileName) throw '❌ Could not determine file name HALP'
+  const projectFileDir = projectFilePath.replace(fileNameAndExtRegex, '')
 
   console.log('👀 Scripts watcher started')
 
@@ -150,17 +281,31 @@ export async function startScriptsWatcher(
       console.log(`👀 Watcher detected change in:\n${checkPath}\n`)
       if (checkPath.match(/_globals\.lua$/)) {
         console.log('♻️  Globals script changed, re-injecting all scripts...')
-        await applyAllScriptFiles(parsedProject, scriptsDir)
-        await writeProjectFile(parsedProject, fileDir, fileName)
+        const requiresRebuild = await applyAllScriptFiles({
+          parsedProject,
+          scriptsDir,
+          projectFileDir,
+          projectFileName,
+          debugMode,
+        })
+        if (requiresRebuild) await writeProjectFile({ parsedProject, projectFileDir, projectFileName })
       } else {
         // We do debouncing to avoid the script running twice -- once for save and once for vscode's formatting save
         if (!debounced_applyScriptFile[checkPath])
           debounced_applyScriptFile[checkPath] = debounce(async () => {
             scriptInjectionLog = {}
-            await applyScriptFile(parsedProject, checkPath, globals)
-
-            printResults()
-            await writeProjectFile(parsedProject, fileDir, fileName)
+            const requiresRebuild = await applyScriptFile({
+              parsedProject,
+              scriptFilePath: checkPath,
+              prependScript: globals,
+              projectFileDir,
+              projectFileName,
+              debugMode,
+            })
+            if (requiresRebuild) {
+              printResults()
+              await writeProjectFile({ parsedProject, projectFileDir, projectFileName })
+            }
           }, 200)
 
         await debounced_applyScriptFile[checkPath]()
@@ -169,10 +314,16 @@ export async function startScriptsWatcher(
   }
 }
 
-export async function startToscFileWatcher(filePath: string, callback: () => void) {
+export async function startToscFileWatcher({
+  projectFilePath,
+  callback,
+}: {
+  projectFilePath: string
+  callback: () => void
+}) {
   console.log('👀 TOSC file watcher started')
   if (toscFileWatcher) throw 'Tosc file watcher already exists'
-  toscFileWatcher = Deno.watchFs(filePath)
+  toscFileWatcher = Deno.watchFs(projectFilePath)
   for await (const event of toscFileWatcher) {
     if (event.kind === 'modify') await callback()
   }
@@ -180,6 +331,8 @@ export async function startToscFileWatcher(filePath: string, callback: () => voi
 
 export async function cancelWatchers() {
   console.log('😆 Cancelling watchers...')
+  scriptInjectionLog = {}
+  scriptCache = {}
   debounced_applyScriptFile = {}
   await Promise.all([scriptsWatcher?.return?.(), toscFileWatcher?.return?.()])
   scriptsWatcher = undefined

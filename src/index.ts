@@ -38,10 +38,10 @@ async function handleProjectFileChange() {
   throw 'pls stop'
 }
 
-async function letsGo(filePath: string, scriptsDir: string) {
+async function letsGo(projectFilePath: string, scriptsDir: string) {
   const parsedProject = await (async () => {
     try {
-      return await processToscFile(filePath, scriptsDir, debugMode)
+      return await processToscFile({ projectFilePath, scriptsDir, debugMode })
     } catch (e) {
       console.log(e)
       return false
@@ -61,8 +61,8 @@ async function letsGo(filePath: string, scriptsDir: string) {
   console.log('\n🎉🎉🎉🎉🎉\n')
 
   await Promise.all([
-    startScriptsWatcher(parsedProject, filePath, scriptsDir),
-    startToscFileWatcher(filePath, handleProjectFileChange),
+    startScriptsWatcher({ parsedProject, projectFilePath, scriptsDir }),
+    startToscFileWatcher({ projectFilePath, callback: handleProjectFileChange }),
   ])
 }
 

@@ -53,3 +53,10 @@ There is a `--debug` argument that adds extra logs and outputs a debug `.json` f
 ## Issues
 
 The XML parsing lib isn't very performant once files get above the 1mb mark. I've not been able to find and good alternatives for deno as of now.
+
+
+--- 
+
+## To-do
+
+If a script file is modified while XML re-encoding is in-progress, it should cancel and start over (taking into account change that was currently being processed + new change).
