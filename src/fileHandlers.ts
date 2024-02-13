@@ -50,7 +50,10 @@ export function parseToscXML({ xmlString, fileSize }: { xmlString: string; fileS
   const total = fileSize || new Blob([xmlString]).size
   const progress = new ProgressBar({ total, display: ':percent [:bar] :time' })
   try {
-    const json = parseXml(xmlString, { progress: (bytes) => progress.render(bytes) }) as unknown as ToscDoc
+    const json = parseXml(xmlString, {
+      reviveNumbers: false,
+      progress: (bytes) => progress.render(bytes),
+    }) as unknown as ToscDoc
     progress.render(total)
     console.log(`✅ XML successfully parsed (took ${stopwatchTick()} ms)`)
     return json
