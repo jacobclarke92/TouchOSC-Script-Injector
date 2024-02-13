@@ -1,8 +1,8 @@
 import { ToscDoc } from './types.ts'
 import { stopwatchTick, stopwatchLast } from './main.ts'
-import { parse as parseXml, stringify as encodeXml } from 'https://deno.land/x/xml@2.0.4/mod.ts'
+import { parse as parseXml, stringify as encodeXml } from 'https://deno.land/x/xml@2.1.3/mod.ts'
 import { XmlEntities } from 'https://deno.land/x/html_entities@v1.0/mod.js'
-import { inflate } from 'https://deno.land/x/compress@v0.4.5/zlib/inflate.ts'
+import { inflate } from 'https://deno.land/x/compress@v0.4.6/zlib/inflate.ts'
 import ProgressBar from 'https://deno.land/x/progress@v1.2.5/mod.ts'
 
 export async function getToscFileContent(filePath: string) {

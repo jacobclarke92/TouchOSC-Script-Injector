@@ -8,7 +8,7 @@ import {
   writeProjectFile,
   findReplaceScriptQuick,
 } from './fileHandlers.ts'
-import { exists } from 'https://deno.land/std@0.139.0/fs/mod.ts'
+import { exists } from 'https://deno.land/std@0.215.0/fs/mod.ts'
 import { debounce } from 'https://deno.land/x/debounce@v0.0.7/mod.ts'
 
 const stopwatch = [Date.now()]
